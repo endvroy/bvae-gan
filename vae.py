@@ -11,19 +11,19 @@ class VAEArgs:
     pass
 
 
-args = VAEArgs()
-args.batch_size = 128
-args.epochs = 10
-args.log_interval = 10
-args.cuda = torch.cuda.is_available()
+vae_args = VAEArgs()
+vae_args.batch_size = 128
+vae_args.epochs = 10
+vae_args.log_interval = 10
+vae_args.cuda = torch.cuda.is_available()
 
-device = torch.device("cuda" if args.cuda else "cpu")
+device = torch.device("cuda" if vae_args.cuda else "cpu")
 
-dl_kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
+dl_kwargs = {'num_workers': 1, 'pin_memory': True} if vae_args.cuda else {}
 data_loader = torch.utils.data.DataLoader(
     datasets.MNIST(root='.', train=True, download=True,
                    transform=transforms.ToTensor()),
-    batch_size=args.batch_size, shuffle=True, **dl_kwargs)
+    batch_size=vae_args.batch_size, shuffle=True, **dl_kwargs)
 
 
 class VAE(nn.Module):
@@ -77,7 +77,7 @@ def train(epoch):
         loss.backward()
         train_loss += loss.item()
         optimizer.step()
-        if batch_idx % args.log_interval == 0:
+        if batch_idx % vae_args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(data_loader.dataset),
                        100. * batch_idx / len(data_loader),
@@ -88,7 +88,7 @@ def train(epoch):
 
 
 if __name__ == "__main__":
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(1, vae_args.epochs + 1):
         train(epoch)
         with torch.no_grad():
             sample = torch.randn(64, 20).to(device)
