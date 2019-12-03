@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 import torchvision.utils as vutils
+from utils import SGHMC, Gibbs
 
 
 class BVAEGANArgs:
@@ -216,9 +217,8 @@ def bvae_gan_train():
 
             # Output training stats
             if batch_idx % 50 == 0:
-                print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
-                      % (epoch, args.epochs, batch_idx, len(data_loader),
-                         disc_loss.item(), gen_loss.item(), D_x, D_G_z1, D_G_z2))
+                print(
+                    f'[{epoch}/{args.epochs}][{batch_idx}/{len(data_loader)}]Loss_VAE:{vae_loss.item()}\tLoss_D: {disc_loss.item()}\tLoss_G: {gen_loss.item()}\tD(x): {D_x}\tD(G(z)): {D_G_z1} / {D_G_z2}')
 
             # Save Losses for plotting later
             G_losses.append(gen_loss.item())
