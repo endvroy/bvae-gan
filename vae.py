@@ -54,9 +54,9 @@ class VAE(nn.Module):
         return self.decode(z), mu, logvar
 
 
-model = VAE()
-model.to(device)
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
+vae_model = VAE()
+vae_model.to(device)
+vae_optimizer = optim.Adam(vae_model.parameters(), lr=1e-3)
 
 
 # Reconstruction + KL divergence losses summed over all elements and batch
@@ -66,17 +66,17 @@ def vae_loss(recon_x, x, mu, logvar):
     return BCE + KLD
 
 
-def train(epoch):
-    model.train()
+def vae_train(epoch):
+    vae_model.train()
     train_loss = 0
     for batch_idx, (data, _) in enumerate(data_loader):
         data = data.to(device)
-        optimizer.zero_grad()
-        recon_batch, mu, logvar = model(data)
+        vae_optimizer.zero_grad()
+        recon_batch, mu, logvar = vae_model(data)
         loss = vae_loss(recon_batch, data, mu, logvar)
         loss.backward()
         train_loss += loss.item()
-        optimizer.step()
+        vae_optimizer.step()
         if batch_idx % vae_args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(data_loader.dataset),
@@ -89,9 +89,9 @@ def train(epoch):
 
 if __name__ == "__main__":
     for epoch in range(1, vae_args.epochs + 1):
-        train(epoch)
+        vae_train(epoch)
         with torch.no_grad():
             sample = torch.randn(64, 20).to(device)
-            sample = model.decode(sample).cpu()
+            sample = vae_model.decode(sample).cpu()
             save_image(sample.view(64, 1, 28, 28),
                        'results/sample_' + str(epoch) + '.png')
