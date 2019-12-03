@@ -41,7 +41,7 @@ G_losses = []
 D_losses = []
 
 # Training dataset
-dataloader = torch.utils.data.DataLoader(
+data_loader = torch.utils.data.DataLoader(
     datasets.MNIST(root='.', train=True, download=True,
                    transform=transforms.Compose([
                        transforms.ToTensor(),
@@ -118,7 +118,7 @@ def gan_train():
     # For each epoch
     for epoch in range(gan_args.epochs):
         # For each batch in the dataloader
-        for i, data in enumerate(dataloader, 0):
+        for i, data in enumerate(data_loader, 0):
             ## Train with all-real batch
             disc_net.zero_grad()
             # Format batch
@@ -170,7 +170,7 @@ def gan_train():
             # Output training stats
             if i % 50 == 0:
                 print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f'
-                      % (epoch, gan_args.epochs, i, len(dataloader),
+                      % (epoch, gan_args.epochs, i, len(data_loader),
                          disc_loss.item(), gen_loss.item(), D_x, D_G_z1, D_G_z2))
 
             # Save Losses for plotting later
@@ -178,7 +178,7 @@ def gan_train():
             D_losses.append(disc_loss.item())
 
             # Check how the generator is doing by saving G's output on fixed_noise
-            if (i % 500 == 0) or ((epoch == gan_args.epochs - 1) and (i == len(dataloader) - 1)):
+            if (i % 500 == 0) or ((epoch == gan_args.epochs - 1) and (i == len(data_loader) - 1)):
                 with torch.no_grad():
                     fake = gen_net(fixed_noise).detach().cpu()
                 img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
