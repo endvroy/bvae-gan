@@ -3,8 +3,10 @@ import torch
 ''' sample parameters in one `model` '''
 
 
-def SGHMC(loss, model, Optim=None, steps=int(1e2), lr=1e-2, friction=1e-1):
-    vList = [torch.randn_like(param) for param in model.parameters()]
+def SGHMC(loss, model, Optim=None, steps=int(1e2), lr=1e-2, friction=1e-1, device=None):
+    if device is None:
+        raise ValueError('device must be specified')
+    vList = [torch.randn_like(param, device=device) for param in model.parameters()]
     if Optim is not None:
         optim = Optim(model.parameters())
         for step in range(steps):
@@ -29,7 +31,7 @@ def Gibbs(lossList, modelBatchUnion, dataBatchList, epochs, *argsMC, **kwargsMC)
     assert (len(lossList) == len(modelBatchUnion))
     for epoch in range(epochs):
         print('Epoch:', epoch + 1)
-        for (batch, dataBatch) in enumerate(dataBatchList):
+        for (batch, dataBatch) in enumerate(iter(dataBatchList)):
             for (k, (_loss, modelBatch)) in enumerate(zip(lossList, modelBatchUnion)):
                 modelBatchOthers = [modelBatch for (j, modelBatch) in enumerate(modelBatchUnion) if j != k]
                 loss = lambda model: _loss(model, dataBatch, *modelBatchOthers)

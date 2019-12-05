@@ -5,6 +5,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 import torchvision.utils as vutils
 from utils import SGHMC, Gibbs
+import itertools
 
 
 class BVAEGANArgs:
@@ -26,10 +27,13 @@ args.ngf = 64
 args.nc = 1
 # Size of feature maps in discriminator
 args.ndf = 64
-args.epochs = 5
+args.epochs = 2
 args.batch_size = 128
 args.log_interval = 10
-args.lmbda = 1
+args.n_vae = 2
+args.n_gen = 2
+args.n_disc = 2
+args.steps = 1
 
 device = torch.device('cuda' if args.cuda else 'cpu')
 
@@ -132,104 +136,77 @@ class Discriminator(nn.Module):
         return self.main(inp)
 
 
-# Create the generator
-vae_model = VAE().to(device)
-gen_net = Generator().to(device)
-disc_net = Discriminator().to(device)
+l_gen = lambda d: -d  # -torch.nn.functional.logsigmoid(d)
+l_dis_real = lambda d: -d  # -torch.nn.functional.logsigmoid(d)
+l_dis_fake = lambda d: d  # -torch.nn.functional.logsigmoid(-d)
 
-# optimizers
-vae_optimizer = optim.Adam(vae_model.parameters(), lr=args.lr)
-disc_optimizer = optim.Adam(disc_net.parameters(), lr=args.lr, betas=(args.beta1, 0.999))
-gen_optimizer = optim.Adam(gen_net.parameters(), lr=args.lr, betas=(args.beta1, 0.999))
-
-bce_loss = nn.BCELoss()
+# create models
+vae_nets = [VAE().to(device).eval() for i in range(args.n_vae)]
+gen_nets = [Generator().to(device).eval() for i in range(args.n_gen)]
+disc_nets = [Discriminator().to(device).eval() for i in range(args.n_disc)]
 
 
-def calc_vae_loss(recon_x, x, mu, logvar):
+def vae_loss_(recon_x, x, mu, logvar):
     BCE = F.binary_cross_entropy(recon_x, x, reduction='sum')
     KLD = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
     return BCE + KLD
 
 
-def bvae_gan_train():
-    # For each epoch
-    for epoch in range(args.epochs):
-        # For each batch in the dataloader
-        for batch_idx, (data, _) in enumerate(data_loader):
-            data = data.to(device)
+def calc_vae_loss(vae_net, gen_net, data):
+    z, mu, logvar = vae_net(data)
+    z = z.reshape(z.shape + (1, 1))
+    recon_batch = gen_net(z)
+    vae_loss = vae_loss_(recon_batch, data, mu, logvar)
+    return torch.mean(vae_loss)
 
-            # encode data with VAE
-            vae_optimizer.zero_grad()
-            z, mu, logvar = vae_model(data)
-            z = z.reshape(z.shape + (1, 1))
-            # the vae loss is part of the generator loss, so no torch.no_grad
-            recon_batch = gen_net(z)
-            vae_loss = calc_vae_loss(recon_batch, data, mu, logvar)
-            vae_loss.backward()
 
-            # Train discriminator with real data
-            disc_net.zero_grad()
-            # Format batch
-            b_size = data.size(0)
-            label = torch.full((b_size,), real_label, device=device)
-            # Forward pass real batch through D
-            disc_output = disc_net(data).view(-1)
-            # Calculate loss on all-real batch
-            disc_loss_real = bce_loss(disc_output, label)
-            disc_loss_real.backward()
-            # Calculate gradients for D in backward pass
-            D_x = disc_output.mean().item()
+def calc_gen_loss(vae_net, gen_net, dis_net, data):
+    z, mu, logvar = vae_net(data)
+    z = z.reshape(z.shape + (1, 1))
+    recon_batch = gen_net(z)
+    vae_loss = vae_loss_(recon_batch, data, mu, logvar)
+    z0 = torch.randn((args.batch_size, args.nz, 1, 1), device=device)
+    fake = gen_net(z0)
+    gen_loss = l_gen(dis_net(fake))
+    return torch.mean(gen_loss) + torch.mean(vae_loss)
 
-            # Train discriminator with fake data
-            # Generate batch of latent vectors
-            noise = torch.randn(b_size, args.nz, 1, 1, device=device)
-            # Generate fake image batch with G
-            fake = gen_net(noise)
-            label.fill_(fake_label)
-            # Classify all fake batch with D
-            disc_output = disc_net(fake.detach()).view(-1)
-            # Calculate D's loss on the all-fake batch
-            disc_loss_fake = bce_loss(disc_output, label)
-            disc_loss_fake.backward()
-            # Calculate the gradients for this batch
-            D_G_z1 = disc_output.mean().item()
-            # Add the gradients from the all-real and all-fake batches
-            disc_loss = disc_loss_real + disc_loss_fake
 
-            # Update D
-            disc_optimizer.step()
+def calc_disc_loss(gen_net, dis_net, data, prior_var=1e2):
+    z = torch.randn((args.batch_size, args.nz, 1, 1), device=device)
+    fake = gen_net(z)
+    return torch.mean(l_dis_real(dis_net(data))) \
+           + torch.mean(l_dis_fake(dis_net(fake)))
+    # + torch.sum(torch.stack([torch.nn.functional.mse_loss(torch.zeros_like(p), p, reduction='sum')
+    #                          for p in dis_net.parameters()])) / (2 * prior_var)
+    # return torch.mean(l_dis_real(dis_net(x))) + torch.mean(l_dis_fake(dis_net(gen_net(z))))
 
-            ############################
-            # (2) Update G network: maximize log(D(G(z)))
-            ###########################
-            gen_net.zero_grad()
-            label.fill_(real_label)  # fake labels are real for generator cost
-            # Sigan_args.nce we just updated D, perform another forward pass of all-fake batch through D
-            gen_output = disc_net(fake).view(-1)
-            # Calculate G's loss based on this output
-            gen_loss = bce_loss(gen_output, label)
-            # Calculate gradients for G
-            gen_loss.backward()
-            # for logging only
-            D_G_z2 = gen_output.mean().item()
-            # Update G
-            gen_optimizer.step()
 
-            # Output training stats
-            if batch_idx % 50 == 0:
-                print(
-                    f'[{epoch}/{args.epochs}][{batch_idx}/{len(data_loader)}]Loss_VAE:{vae_loss.item()}\tLoss_D: {disc_loss.item()}\tLoss_G: {gen_loss.item()}\tD(x): {D_x}\tD(G(z)): {D_G_z1} / {D_G_z2}')
+def E_vae_loss(vae_net, data, gen_nets, _disc_nets):
+    x, y = data
+    return torch.mean(torch.stack([calc_vae_loss(vae_net, gen_net, x) for gen_net in gen_nets]))
 
-            # Save Losses for plotting later
-            G_losses.append(gen_loss.item())
-            D_losses.append(disc_loss.item())
 
-            # Check how the generator is doing by saving G's output on fixed_noise
-            if (batch_idx % 500 == 0) or ((epoch == args.epochs - 1) and (batch_idx == len(data_loader) - 1)):
-                with torch.no_grad():
-                    fake = gen_net(fixed_noise).detach().cpu()
-                img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
+def E_gen_loss(gen_net, data, vae_nets, disc_nets):
+    x, y = data
+    return torch.mean(torch.stack([calc_gen_loss(vae_net, gen_net, disc_net, x)
+                                   for vae_net, disc_net in
+                                   itertools.product(vae_nets, disc_nets)]))
+
+
+def E_disc_loss(disc_net, data, _vae_nets, gen_nets):
+    x, y = data
+    return torch.mean(torch.stack([calc_disc_loss(gen_net, disc_net, x) for gen_net in gen_nets]))
 
 
 if __name__ == '__main__':
-    bvae_gan_train()
+    data = []
+    it = iter(data_loader)
+    for i in range(2):
+        data.append(next(it))
+
+    Gibbs([E_vae_loss, E_gen_loss, E_disc_loss],
+          [vae_nets, gen_nets, disc_nets],
+          data,
+          args.epochs, steps=args.steps, Optim=torch.optim.Adam, device=device)
+
+    print(gen_nets[0](torch.randn((1, args.nz, 1, 1), device=device))[0].detach())
