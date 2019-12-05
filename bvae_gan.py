@@ -27,7 +27,7 @@ args.ngf = 64
 args.nc = 1
 # Size of feature maps in discriminator
 args.ndf = 64
-args.epochs = 2
+args.epochs = 5
 args.batch_size = 128
 args.log_interval = 10
 args.n_vae = 2
@@ -183,11 +183,13 @@ def calc_disc_loss(gen_net, dis_net, data, prior_var=1e2):
 
 def E_vae_loss(vae_net, data, gen_nets, _disc_nets):
     x, y = data
+    x = x.to(device)
     return torch.mean(torch.stack([calc_vae_loss(vae_net, gen_net, x) for gen_net in gen_nets]))
 
 
 def E_gen_loss(gen_net, data, vae_nets, disc_nets):
     x, y = data
+    x = x.to(device)
     return torch.mean(torch.stack([calc_gen_loss(vae_net, gen_net, disc_net, x)
                                    for vae_net, disc_net in
                                    itertools.product(vae_nets, disc_nets)]))
@@ -195,18 +197,14 @@ def E_gen_loss(gen_net, data, vae_nets, disc_nets):
 
 def E_disc_loss(disc_net, data, _vae_nets, gen_nets):
     x, y = data
+    x = x.to(device)
     return torch.mean(torch.stack([calc_disc_loss(gen_net, disc_net, x) for gen_net in gen_nets]))
 
 
 if __name__ == '__main__':
-    data = []
-    it = iter(data_loader)
-    for i in range(2):
-        data.append(next(it))
-
     Gibbs([E_vae_loss, E_gen_loss, E_disc_loss],
           [vae_nets, gen_nets, disc_nets],
-          data,
+          data_loader,
           args.epochs, steps=args.steps, Optim=torch.optim.Adam, device=device)
 
     print(gen_nets[0](torch.randn((1, args.nz, 1, 1), device=device))[0].detach())
