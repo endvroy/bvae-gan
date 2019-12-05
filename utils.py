@@ -37,7 +37,9 @@ def Gibbs(lossList, modelBatchUnion, dataBatchList, epochs, *argsMC, **kwargsMC)
                 loss = lambda model: _loss(model, dataBatch, *modelBatchOthers)
                 for (m, model) in enumerate(modelBatch):
                     SGHMC(loss, model, *argsMC, **kwargsMC)
-                    print('.', end='', flush=True)
-                print('-', end='', flush=True)
-            print('=', end='', flush=True)
+                    # print('.', end='', flush=True)
+                # print('-', end='', flush=True)
+            if batch % 10 == 0:
+                print(f'batch: {batch}')
+                # print('=', end='', flush=True)
         print()
