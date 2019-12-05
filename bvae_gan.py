@@ -5,6 +5,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 import torchvision.utils as vutils
 from utils import SGHMC, Gibbs
+import matplotlib.pyplot as plt
 import itertools
 
 
@@ -17,8 +18,6 @@ args = BVAEGANArgs()
 args.cuda = torch.cuda.is_available()
 # Learning rate for optimizers
 args.lr = 0.0002
-# Beta1 hyperparam for Adam optimizers
-args.beta1 = 0.5
 # Size of z latent vector (i.e. size of generator input)
 args.nz = 100
 # Size of feature maps in generator
@@ -31,8 +30,8 @@ args.epochs = 5
 args.batch_size = 128
 args.log_interval = 10
 args.n_vae = 2
-args.n_gen = 2
-args.n_disc = 2
+args.n_gen = 3
+args.n_disc = 1
 args.steps = 1
 
 device = torch.device('cuda' if args.cuda else 'cpu')
@@ -207,4 +206,8 @@ if __name__ == '__main__':
           data_loader,
           args.epochs, steps=args.steps, Optim=torch.optim.Adam, device=device)
 
-    print(gen_nets[0](torch.randn((1, args.nz, 1, 1), device=device))[0].detach())
+    z = torch.randn((1, args.nz, 1, 1), device=device)
+    out = gen_nets[0](z)[0].detach()
+    out = 0.3081 * out + 0.1307
+    plt.imshow(torch.Tensor.cpu(out).numpy()[0], cmap='gray')
+    plt.show()
